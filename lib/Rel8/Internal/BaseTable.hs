@@ -49,7 +49,6 @@ class
     to gtableSchema
   
 
-
 queryTable
   :: forall table schema expr m s.
      ( BaseTable schema table

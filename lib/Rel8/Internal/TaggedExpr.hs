@@ -1,7 +1,6 @@
 {-# language DeriveGeneric #-}
 {-# language FlexibleInstances #-}
 {-# language MultiParamTypeClasses #-}
-{-# language PolyKinds #-}
 {-# language TypeFamilies #-}
 {-# language UndecidableInstances #-}
 

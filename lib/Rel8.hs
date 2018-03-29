@@ -11,7 +11,7 @@
 {-# language MultiParamTypeClasses #-}
 {-# language UndecidableInstances #-}
 
-module Rel8 ( I.aggregate, I.queryTable, sum_, lit, I.where_, I.Table, I.BaseTable, I.Expr ) where
+module Rel8 ( I.Expr, I.Query, I.Aggregation, I.aggregate, I.queryTable, sum_, lit, I.where_, I.Table(..), I.BaseTable(..), I.Expr ) where
 
 import Data.Functor.Identity ( Identity )
 import GHC.Generics ( Generic )

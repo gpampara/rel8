@@ -1,5 +1,4 @@
 {-# language FlexibleInstances #-}
-{-# language PolyKinds #-}
 {-# language TypeFamilies #-}
 
 module Rel8.Internal.Expr ( Expr(..) ) where
