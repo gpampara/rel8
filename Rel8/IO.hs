@@ -1,4 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Rel8.IO
   (
     -- * @SELECT@
@@ -81,7 +84,7 @@ streamCursor conn parser query =
 -- | Given a database query, execute this query and return a 'Stream' of
 -- results. This runs a @SELECT@ statement.
 select
-  :: (MonadIO m, Table rows results)
+  :: (MonadIO m, Table Expr rows, Select rows results)
   => QueryRunner m -> O.Query rows -> Stream (Of results) m ()
 select io query =
   runQueryExplicit io queryRunner query
@@ -91,7 +94,7 @@ insert
   :: (BaseTable table, MonadIO m)
   => Connection -> [table Insert] -> m Int64
 insert conn rows =
-  liftIO (O.runInsertMany conn tableDefinition rows)
+  liftIO (O.runInsertMany conn (tableDefinition @O.Query) rows)
 
 -- | Insert rows into a 'BaseTable', and return the inserted rows. This runs a
 -- @INSERT ... RETURNING@ statement, and be useful to immediately retrieve
@@ -162,9 +165,9 @@ delete
 delete conn f =
   O.runDelete conn tableDefinition (exprToColumn . toNullable . f)
 
-queryRunner :: Table a b => O.QueryRunner a b
+queryRunner :: (Table t a, Select a b, Table (ExprT O.Query) a) => O.QueryRunner a b
 queryRunner =
-  O.QueryRunner (void unpackColumns)
+  O.QueryRunner (void (unpackColumns @O.Query))
                 (const rowParser)
                 (Prelude.not . nullOf (expressions . traverse))
 

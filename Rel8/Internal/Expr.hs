@@ -14,6 +14,7 @@ import Data.Coerce (Coercible)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Data.Text
+import qualified Opaleye as O
 import qualified Opaleye.Internal.Column as O
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as O
 import qualified Opaleye.PGTypes as O
@@ -22,22 +23,27 @@ import Rel8.Internal.DBType
 --------------------------------------------------------------------------------
 -- | Database-side PostgreSQL expressions of a given type.
 
-newtype Expr t = Expr O.PrimExpr
+data ExprT (m :: * -> *) t
+  = ExprT O.PrimExpr 
+  | Aggregate (Maybe (O.AggrOp, [O.OrderExpr], O.AggrDistinct))
+              O.PrimExpr
 
-type role Expr representational
+type role ExprT representational representational
 
-instance (IsString a, DBType a) => IsString (Expr a) where
+instance (IsString a, DBType a) => IsString (ExprT m a) where
   fromString = lit . fromString
 
-instance {-# OVERLAPS#-} (IsString a, DBType a) => IsString (Expr (Maybe a)) where
+instance {-# OVERLAPS#-} (IsString a, DBType a) => IsString (ExprT m (Maybe a)) where
   fromString = lit . Just . fromString
+
+type Expr = ExprT O.Query
 
 -- | It is assumed that any Haskell types that have a 'Num' instance also have
 -- the corresponding operations in the database. Hence, Num a => Num (Expr a).
 -- *However*, if this is not the case, you should `newtype` the Haskell type
 -- and avoid providing a 'Num' instance, or you may write be able to write
 -- ill-typed queries!
-instance (DBType a, Num a) => Num (Expr a) where
+instance (DBType a, Num a) => Num (ExprT m a) where
   a + b = columnToExpr (O.binOp (O.:+) (exprToColumn a) (exprToColumn b))
   a * b = columnToExpr (O.binOp (O.:*) (exprToColumn a) (exprToColumn b))
   abs = dbFunction "abs"
@@ -50,8 +56,8 @@ instance (DBType a, Num a) => Num (Expr a) where
 -- not witnessed by the database at all, so use with care! For example,
 -- @unsafeCoerceExpr :: Expr Int -> Expr Text@ /will/ end up with an exception
 -- when you finally try and run a query!
-unsafeCoerceExpr :: forall b a. Expr a -> Expr b
-unsafeCoerceExpr (Expr a) = Expr a
+unsafeCoerceExpr :: forall b a m. ExprT m a -> ExprT m b
+unsafeCoerceExpr (ExprT a) = ExprT a
 
 
 --------------------------------------------------------------------------------
@@ -59,7 +65,7 @@ unsafeCoerceExpr (Expr a) = Expr a
 -- This is unsafe as it is possible to introduce casts that cannot be performed
 -- by PostgreSQL. For example,
 -- @unsafeCastExpr "timestamptz" :: Expr Bool -> Expr UTCTime@ makes no sense.
-unsafeCastExpr :: forall b a. String -> Expr a -> Expr b
+unsafeCastExpr :: forall b a m. String -> ExprT m a -> ExprT m b
 unsafeCastExpr t = columnToExpr . O.unsafeCast t . exprToColumn
 
 
@@ -70,7 +76,7 @@ unsafeCastExpr t = columnToExpr . O.unsafeCast t . exprToColumn
 -- This is useful as it allows projecting an already-nullable column from a left
 -- join.
 class ToNullable a maybeA | a -> maybeA where
-  toNullable :: Expr a -> Expr maybeA
+  toNullable :: ExprT m a -> ExprT m maybeA
 
 instance ToNullableHelper a maybeA (IsMaybe a) => ToNullable a maybeA where
   toNullable = toNullableHelper (Proxy @(IsMaybe a))
@@ -81,7 +87,7 @@ instance ToNullableHelper a maybeA (IsMaybe a) => ToNullable a maybeA where
 -- dependencies.
 class isMaybe ~ IsMaybe a =>
         ToNullableHelper a maybeA isMaybe | isMaybe a -> maybeA where
-  toNullableHelper :: proxy (join :: Bool) -> Expr a -> Expr maybeA
+  toNullableHelper :: proxy (join :: Bool) -> ExprT m a -> ExprT m maybeA
 
 instance IsMaybe a ~ 'False => ToNullableHelper a (Maybe a) 'False where
   toNullableHelper _ = unsafeCoerceExpr @(Maybe a)
@@ -99,15 +105,15 @@ type family IsMaybe a :: Bool where
 --------------------------------------------------------------------------------
 -- | Convert an 'Expr' into an @opaleye@ 'O.Column'. Does not preserve the
 -- phantom type.
-exprToColumn :: Expr a -> O.Column b
-exprToColumn (Expr a) = O.Column a
+exprToColumn :: forall a b m. ExprT m a -> O.Column b
+exprToColumn (ExprT a) = O.Column a
 
 
 --------------------------------------------------------------------------------
 -- | Convert an @opaleye 'O.Column' into an 'Expr'. Does not preserve the
 -- phantom type.
-columnToExpr :: O.Column a -> Expr b
-columnToExpr (O.Column a) = Expr a
+columnToExpr :: O.Column a -> ExprT m b
+columnToExpr (O.Column a) = ExprT a
 
 
 --------------------------------------------------------------------------------
@@ -119,20 +125,20 @@ columnToExpr (O.Column a) = Expr a
 -- If the @newtype@ wrapper has a custom 'DBType' (one not derived with
 -- @GeneralizedNewtypeDeriving@) this function may be unsafe and could lead to
 -- runtime exceptions.
-coerceExpr :: Coercible a b => Expr a -> Expr b
-coerceExpr (Expr a) = Expr a
+coerceExpr :: Coercible a b => ExprT m a -> ExprT m b
+coerceExpr (ExprT a) = ExprT a
 
 
 --------------------------------------------------------------------------------
 -- | Casts an 'Expr' as @text@.
-dbShow :: DBType a => Expr a -> Expr Text
+dbShow :: DBType a => ExprT m a -> ExprT m Text
 dbShow = unsafeCastExpr "text"
 
 
 --------------------------------------------------------------------------------
 -- | Lift a Haskell value into a literal database expression.
-lit :: DBType a => a -> Expr a
-lit = Expr . formatLit dbTypeInfo
+lit :: DBType a => a -> ExprT m a
+lit = ExprT . formatLit dbTypeInfo
 
 
 --------------------------------------------------------------------------------
@@ -140,16 +146,16 @@ class Function arg res where
   -- | Build a function of multiple arguments.
   mkFunctionGo :: ([O.PrimExpr] -> O.PrimExpr) -> arg -> res
 
-instance (DBType a, arg ~ Expr a) =>
-         Function arg (Expr res) where
-  mkFunctionGo mkExpr (Expr a) = Expr (mkExpr [a])
+instance (DBType a, arg ~ ExprT m a) =>
+         Function arg (ExprT m res) where
+  mkFunctionGo mkExpr (ExprT a) = ExprT (mkExpr [a])
 
-instance (DBType a, arg ~ Expr a, Function args res) =>
+instance (DBType a, arg ~ ExprT m a, Function args res) =>
          Function arg (args -> res) where
-  mkFunctionGo f (Expr a) = mkFunctionGo (f . (a :))
+  mkFunctionGo f (ExprT a) = mkFunctionGo (f . (a :))
 
 dbFunction :: Function args result => String -> args -> result
 dbFunction = mkFunctionGo . O.FunExpr
 
-nullaryFunction :: DBType a => String -> Expr a
-nullaryFunction name = Expr (O.FunExpr name [])
+nullaryFunction :: DBType a => String -> ExprT m a
+nullaryFunction name = ExprT (O.FunExpr name [])

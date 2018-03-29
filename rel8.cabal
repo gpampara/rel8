@@ -13,19 +13,8 @@ cabal-version:       >=1.10
 Tested-With: GHC == 8.0.2
 
 library
-  exposed-modules:     Rel8
-                       Rel8.IO
-                       Rel8.Internal
-                       Rel8.Text
-                       Control.Monad.Rel8
-  other-modules:       Rel8.Internal.Aggregate
-                       Rel8.Internal.DBType
-                       Rel8.Internal.Expr
-                       Rel8.Internal.Operators
-                       Rel8.Internal.Order
-                       Rel8.Internal.Table
-                       Rel8.Internal.Types
-  other-extensions:    Arrows, ConstraintKinds, DataKinds, DefaultSignatures, DeriveGeneric, FlexibleContexts, FlexibleInstances, FunctionalDependencies, KindSignatures, PolyKinds, ScopedTypeVariables, TypeFamilies, TypeOperators, UndecidableInstances, RankNTypes
+  exposed-modules:     Rel8, Rel8.Internal
+  other-modules:       Rel8.Internal.Table
   build-depends:       aeson
                      , base >=4.9 && <4.11
                      , bytestring
@@ -50,13 +39,6 @@ library
                      , vector
                      , lens
                      , adjunctions
-  -- hs-source-dirs:
+  hs-source-dirs:    lib
   default-language:    Haskell2010
   ghc-options:         -Wall -fwarn-redundant-constraints -fwarn-incomplete-uni-patterns
-
-
-test-suite example
-           type: exitcode-stdio-1.0
-           hs-source-dirs: doc
-           main-is: Example.hs
-           build-depends: base, rel8

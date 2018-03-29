@@ -62,7 +62,7 @@ import qualified Rel8.IO
 
 data StatementSyntax f where
   Select ::
-      Table pg haskell =>
+      (Table Expr pg, Select pg haskell) =>
       Query pg -> ([haskell] -> k) -> StatementSyntax k
   Insert1Returning ::
       BaseTable table =>
@@ -93,7 +93,7 @@ instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadStatement m) => M
   liftStatements = lift . liftStatements
 
 select
-  :: (MonadStatement m, Table expr haskell)
+  :: (MonadStatement m, Table Expr expr, Select expr haskell)
   => Query expr -> m [haskell]
 select q = liftStatements (liftF (Select q id))
 

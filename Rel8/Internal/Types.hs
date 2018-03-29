@@ -1,14 +1,16 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Rel8.Internal.Types where
 
 import Rel8.Internal.Expr
+import qualified Opaleye as O
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as O
 
 --------------------------------------------------------------------------------
@@ -56,12 +58,11 @@ data Default a
     @
 -}
 type family C f columnName hasDefault columnType :: * where
-  C Expr _name _def t = Expr t
+  C (ExprT m) _name _def t = ExprT m t
   C QueryResult _name _def t = t
   C SchemaInfo name hasDefault t = SchemaInfo '(name, hasDefault, t)
   C Insert name 'HasDefault t = Default (Expr t)
   C Insert name 'NoDefault t = Expr t
-  C Aggregate name _ t = Aggregate t
 
 -- | @Anon@ can be used to define columns like 'C', but does not contain the
 -- extra metadata needed to define a 'BaseTable' instance. The main use of
@@ -86,9 +87,8 @@ type family C f columnName hasDefault columnType :: * where
 --                            }
 -- @
 type family Anon f columnType :: * where
-  Anon Expr t = Expr t
+  Anon (ExprT m) t = ExprT m t
   Anon QueryResult t = t
-  Anon Aggregate t = Aggregate t
 
 newtype Limit f = Limit
   { runLimit :: forall a. f a
@@ -98,7 +98,7 @@ data Colimit f where
   Colimit :: f a -> Colimit f
 
 data Interpretation f where
-  AsExpr :: Interpretation Expr
+  AsExpr :: Interpretation (ExprT O.Query)
   AsSchemaInfo :: Interpretation SchemaInfo
   AsInsert :: Interpretation Insert
 
@@ -111,9 +111,5 @@ data HasDefault
 
 
 --------------------------------------------------------------------------------
--- | Used to tag 'Expr's that are the result of aggregation
-data Aggregate a =
-  Aggregate (Maybe (O.AggrOp, [O.OrderExpr], O.AggrDistinct))
-            O.PrimExpr
-
-type role Aggregate representational
+newtype Aggregation s m a = Aggregation (m a)
+  deriving (Functor, Applicative, Monad)

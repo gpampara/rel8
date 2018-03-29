@@ -18,19 +18,19 @@ data OrderNulls
   deriving (Enum,Ord,Eq,Read,Show,Bounded)
 
 -- | Order by a column with the 'ASC' keyword.
-asc :: DBOrd b => (a -> Expr b) -> O.Order a
+asc :: DBOrd b => (a -> ExprT m b) -> O.Order a
 asc f = O.asc (exprToColumn @_ @O.PGInt8 . f)
 
 -- | Order by a column with the 'DESC' keyword.
-desc :: DBOrd b => (a -> Expr b) -> O.Order a
+desc :: DBOrd b => (a -> ExprT m b) -> O.Order a
 desc f = O.desc (exprToColumn @_ @O.PGInt8 . f)
 
 -- | Transform 'asc' or 'desc' to treat nulls specially.
 orderNulls
   :: DBOrd b
-  => ((a -> Expr b) -> O.Order a) -- ^ 'asc' or 'desc'.
+  => ((a -> ExprT m b) -> O.Order a) -- ^ 'asc' or 'desc'.
   -> OrderNulls                   -- ^ How @null@ should be ordered.
-  -> (a -> Expr (Maybe b))        -- ^ The column to sort on.
+  -> (a -> ExprT m (Maybe b))        -- ^ The column to sort on.
   -> O.Order a
 orderNulls direction nulls f =
   case direction (unsafeCoerceExpr . f) of
