@@ -10,6 +10,8 @@ module Rel8.Internal.Types where
 
 import Rel8.Internal.Expr
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as O
+import Database.Beam.Query ( QGenExpr )
+import Database.Beam ( Identity )
 
 --------------------------------------------------------------------------------
 -- | Interpret a 'Table' as Haskell values.
@@ -58,6 +60,8 @@ data Default a
 type family C f columnName hasDefault columnType :: * where
   C Expr _name _def t = Expr t
   C QueryResult _name _def t = t
+  C Identity _name _def t = t
+  C (QGenExpr context syntax s) _name _def t = QGenExpr context syntax s t
   C SchemaInfo name hasDefault t = SchemaInfo '(name, hasDefault, t)
   C Insert name 'HasDefault t = Default (Expr t)
   C Insert name 'NoDefault t = Expr t
